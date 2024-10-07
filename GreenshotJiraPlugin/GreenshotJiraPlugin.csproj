@@ -6,7 +6,7 @@
     <OutputType>Library</OutputType>
     <RootNamespace>GreenshotJiraPlugin</RootNamespace>
     <AssemblyName>GreenshotJiraPlugin</AssemblyName>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
     <NoStdLib>False</NoStdLib>
