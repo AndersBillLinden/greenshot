@@ -204,10 +204,9 @@ namespace Greenshot {
 
 			pluginToolStripMenuItem.Visible = pluginToolStripMenuItem.DropDownItems.Count > 0;
 			
-			// Mouse wheel zooms the surface; handle it both on the form (needed because the wheel
-			// event doesn't always reach the panel) and on the panel itself.
-			MouseWheel += WheelZoom;
-			panel1.MouseWheel += WheelZoom;
+			// Mouse wheel zooms the surface. The panel raises PlainMouseWheel (and suppresses its own
+			// scrolling) so a plain wheel zooms instead of panning.
+			panel1.PlainMouseWheel += (s, e) => ZoomBy(Math.Sign(e.Delta), ViewportCenter);
 			panel1.Resize += (s, e) => CenterSurface();
 
 			// Make sure the value is set correctly when starting
@@ -883,29 +882,11 @@ namespace Greenshot {
 		/// </summary>
 		/// <param name="sender"></param>
 		/// <param name="e"></param>
-		/// <summary>
-		/// Mouse wheel zooms in/out around the centre of the viewport. Shift + wheel is left to the
-		/// panel for horizontal scrolling.
-		/// </summary>
-		private void WheelZoom(object sender, MouseEventArgs e) {
-			// The event bubbles from the surface up to the form; only act on it once.
-			if (e is HandledMouseEventArgs alreadyHandled && alreadyHandled.Handled) {
-				return;
-			}
-			if ((ModifierKeys & Keys.Shift) == Keys.Shift) {
-				return;
-			}
-			ZoomBy(Math.Sign(e.Delta), ViewportCenter);
-			// Stop the panel from also scrolling in response to this wheel notch.
-			if (e is HandledMouseEventArgs handled) {
-				handled.Handled = true;
-			}
-		}
 		#endregion
 
 		#region zoom
-		// Discrete zoom levels stepped through with Ctrl + wheel / Ctrl +-
-		private static readonly float[] ZoomLevels = { 0.25f, 0.33f, 0.5f, 0.66f, 1f, 1.5f, 2f, 3f, 4f, 6f, 8f };
+		// Each wheel notch / Ctrl +- multiplies the zoom by this factor for smooth, fine steps.
+		private const float ZoomStep = 1.1f;
 
 		/// <summary>
 		/// The centre of the scrollable viewport, in panel client coordinates; used as the zoom origin.
@@ -918,16 +899,14 @@ namespace Greenshot {
 		/// <param name="direction">positive to zoom in, negative to zoom out</param>
 		/// <param name="devicePoint">point (in panel client coordinates) to keep stationary while zooming</param>
 		private void ZoomBy(int direction, Point devicePoint) {
+			if (_surface == null || direction == 0) {
+				return;
+			}
 			float current = _surface.ZoomFactor;
-			float target = current;
-			if (direction > 0) {
-				foreach (float level in ZoomLevels) {
-					if (level > current + 0.001f) { target = level; break; }
-				}
-			} else if (direction < 0) {
-				for (int i = ZoomLevels.Length - 1; i >= 0; i--) {
-					if (ZoomLevels[i] < current - 0.001f) { target = ZoomLevels[i]; break; }
-				}
+			float target = direction > 0 ? current * ZoomStep : current / ZoomStep;
+			// Snap onto 100% when a step crosses it, so it is easy to land on exactly.
+			if ((current < 1f && target > 1f) || (current > 1f && target < 1f)) {
+				target = 1f;
 			}
 			SetZoom(target, devicePoint);
 		}

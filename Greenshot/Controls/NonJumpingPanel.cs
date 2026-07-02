@@ -19,6 +19,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -27,6 +28,12 @@ namespace GreenshotPlugin.Controls {
 	/// See: http://nickstips.wordpress.com/2010/03/03/c-panel-resets-scroll-position-after-focus-is-lost-and-regained/
 	/// </summary>
 	public class NonJumpingPanel : Panel {
+		/// <summary>
+		/// Raised when the mouse wheel is used without a modifier key. When a handler is attached the
+		/// panel does NOT auto-scroll on a plain wheel, so the consumer can use it for e.g. zooming.
+		/// </summary>
+		public event EventHandler<MouseEventArgs> PlainMouseWheel;
+
 		protected override Point ScrollToControl(Control activeControl) {
 			// Returning the current location prevents the panel from
 			// scrolling to the active control when the panel loses and regains focus
@@ -34,12 +41,20 @@ namespace GreenshotPlugin.Controls {
 		}
 
 		/// <summary>
-		/// Add horizontal scrolling to the panel, when using the wheel and the shift key is pressed
+		/// A plain wheel is offered to PlainMouseWheel (and suppresses scrolling when handled), while
+		/// shift + wheel scrolls horizontally.
 		/// </summary>
 		/// <param name="e">MouseEventArgs</param>
 		protected override void OnMouseWheel(MouseEventArgs e)
 		{
-			if (VScroll && (ModifierKeys & Keys.Shift) == Keys.Shift)
+			bool shift = (ModifierKeys & Keys.Shift) == Keys.Shift;
+			if (!shift && PlainMouseWheel != null)
+			{
+				// Let the consumer (e.g. the editor) use the wheel; do not auto-scroll.
+				PlainMouseWheel(this, e);
+				return;
+			}
+			if (VScroll && shift)
 			{
 				VScroll = false;
 				base.OnMouseWheel(e);
