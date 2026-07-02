@@ -881,8 +881,8 @@ namespace Greenshot {
 		/// <param name="e"></param>
 		private void PanelMouseWheel(object sender, MouseEventArgs e) {
 			if ((ModifierKeys & Keys.Control) == Keys.Control) {
-				// Ctrl + mouse wheel zooms in/out, keeping the point under the cursor stationary
-				ZoomBy(Math.Sign(e.Delta), panel1.PointToClient(MousePosition));
+				// Ctrl + mouse wheel zooms in/out around the centre of the viewport
+				ZoomBy(Math.Sign(e.Delta), ViewportCenter);
 				return;
 			}
 			panel1.Focus();
@@ -892,6 +892,11 @@ namespace Greenshot {
 		#region zoom
 		// Discrete zoom levels stepped through with Ctrl + wheel / Ctrl +-
 		private static readonly float[] ZoomLevels = { 0.25f, 0.33f, 0.5f, 0.66f, 1f, 1.5f, 2f, 3f, 4f, 6f, 8f };
+
+		/// <summary>
+		/// The centre of the scrollable viewport, in panel client coordinates; used as the zoom origin.
+		/// </summary>
+		private Point ViewportCenter => new Point(panel1.ClientSize.Width / 2, panel1.ClientSize.Height / 2);
 
 		/// <summary>
 		/// Step the zoom one level in or out (direction &gt; 0 zooms in).
@@ -914,8 +919,8 @@ namespace Greenshot {
 		}
 
 		/// <summary>
-		/// Apply a zoom factor, keeping the given point (in panel client coordinates) at the same
-		/// place on screen by adjusting the scroll position.
+		/// Apply a zoom factor, keeping the given origin point (in panel client coordinates) at the
+		/// same place on screen by adjusting the scroll position.
 		/// </summary>
 		private void SetZoom(float factor, Point devicePoint) {
 			if (_surface == null) {
@@ -942,7 +947,7 @@ namespace Greenshot {
 		/// Reset the zoom to 100%, keeping the centre of the viewport stable.
 		/// </summary>
 		private void ResetZoom() {
-			SetZoom(1f, new Point(panel1.ClientSize.Width / 2, panel1.ClientSize.Height / 2));
+			SetZoom(1f, ViewportCenter);
 		}
 
 		private void UpdateZoomStatus() {
@@ -970,11 +975,11 @@ namespace Greenshot {
 				switch (keys) {
 					case Keys.Control | Keys.Oemplus:
 					case Keys.Control | Keys.Add:
-						ZoomBy(1, new Point(panel1.ClientSize.Width / 2, panel1.ClientSize.Height / 2));
+						ZoomBy(1, ViewportCenter);
 						return true;
 					case Keys.Control | Keys.OemMinus:
 					case Keys.Control | Keys.Subtract:
-						ZoomBy(-1, new Point(panel1.ClientSize.Width / 2, panel1.ClientSize.Height / 2));
+						ZoomBy(-1, ViewportCenter);
 						return true;
 					case Keys.Control | Keys.D0:
 					case Keys.Control | Keys.NumPad0:
