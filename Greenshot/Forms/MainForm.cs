@@ -305,8 +305,6 @@ namespace Greenshot {
 		private SettingsForm _settingsForm;
 		// Make sure we have only one about form
 		private AboutForm _aboutForm;
-		// Timer for the double click test
-		private readonly Timer _doubleClickTimer = new Timer();
 
 		public NotifyIcon NotifyIcon => notifyIcon;
 
@@ -1266,38 +1264,9 @@ namespace Greenshot {
 				return;
 			}
 			// The right button will automatically be handled with the context menu, here we only check the left.
-			if (_conf.DoubleClickAction == ClickActions.DO_NOTHING) {
-				// As there isn't a double-click we can start the Left click
-				NotifyIconClick(_conf.LeftClickAction);
-				// ready with the test
-				return;
-			}
-			// If the timer is enabled we are waiting for a double click...
-			if (_doubleClickTimer.Enabled) {
-				// User clicked a second time before the timer tick: Double-click!
-				_doubleClickTimer.Elapsed -= NotifyIconSingleClickTest;
-				_doubleClickTimer.Stop();
-				NotifyIconClick(_conf.DoubleClickAction);
-			} else {
-				// User clicked without a timer, set the timer and if it ticks it was a single click
-				// Create timer, if it ticks before the NotifyIconClickTest is called again we have a single click
-				_doubleClickTimer.Elapsed += NotifyIconSingleClickTest;
-				_doubleClickTimer.Interval = SystemInformation.DoubleClickTime;
-				_doubleClickTimer.Start();
-			}
-		}
-
-		/// <summary>
-		/// Called by the doubleClickTimer, this means a single click was used on the tray icon
-		/// </summary>
-		/// <param name="sender"></param>
-		/// <param name="e"></param>
-		private void NotifyIconSingleClickTest(object sender, EventArgs e) {
-			_doubleClickTimer.Elapsed -= NotifyIconSingleClickTest;
-			_doubleClickTimer.Stop();
-			BeginInvoke((MethodInvoker)delegate {
-				NotifyIconClick(_conf.LeftClickAction);
-			});
+			// Fire the left-click action immediately; double-click detection is intentionally disabled to
+			// avoid the SystemInformation.DoubleClickTime delay before the single-click action runs.
+			NotifyIconClick(_conf.LeftClickAction);
 		}
 
 		/// <summary>
