@@ -356,12 +356,6 @@ namespace Greenshot {
 			if (_conf.OutputDestinations.Count == 0) {
 				_conf.OutputDestinations.Add(EditorDestination.DESIGNATION);
 			}
-			if (_conf.DisableQuickSettings) {
-				contextmenu_quicksettings.Visible = false;
-			} else {
-				// Do after all plugins & finding the destination, otherwise they are missing!
-				InitializeQuickSettingsMenu();
-			}
 			SoundHelper.Initialize();
 
 			coreConfiguration.PropertyChanged += OnIconSizeChanged;
@@ -543,10 +537,6 @@ namespace Greenshot {
 		private void OnIconSizeChanged(object sender, PropertyChangedEventArgs e) {
 			if (e.PropertyName == "IconSize") {
 				contextMenu.ImageScalingSize = coreConfiguration.IconSize;
-				string ieExePath = PluginUtils.GetExePath("iexplore.exe");
-				if (!string.IsNullOrEmpty(ieExePath)) {
-					contextmenu_captureie.Image = PluginUtils.GetCachedExeIcon(ieExePath, 0);
-				}
 			}
 		}
 
@@ -661,7 +651,6 @@ namespace Greenshot {
 			contextmenu_capturelastregion.ShortcutKeyDisplayString = HotkeyControl.GetLocalizedHotkeyStringFromString(_conf.LastregionHotkey);
 			contextmenu_capturewindow.ShortcutKeyDisplayString = HotkeyControl.GetLocalizedHotkeyStringFromString(_conf.WindowHotkey);
 			contextmenu_capturefullscreen.ShortcutKeyDisplayString = HotkeyControl.GetLocalizedHotkeyStringFromString(_conf.FullscreenHotkey);
-			contextmenu_captureie.ShortcutKeyDisplayString = HotkeyControl.GetLocalizedHotkeyStringFromString(_conf.IEHotkey);
 		}
 		
 		
@@ -727,19 +716,6 @@ namespace Greenshot {
 			contextmenu_captureclipboard.Enabled = ClipboardHelper.ContainsImage();
 			contextmenu_capturelastregion.Enabled = coreConfiguration.LastCapturedRegion != Rectangle.Empty;
 
-			// IE context menu code
-			try {
-				if (_conf.IECapture && IeCaptureHelper.IsIeRunning()) {
-					contextmenu_captureie.Enabled = true;
-					contextmenu_captureiefromlist.Enabled = true;
-				} else {
-					contextmenu_captureie.Enabled = false;
-					contextmenu_captureiefromlist.Enabled = false;
-				}
-			} catch (Exception ex) {
-				LOG.WarnFormat("Problem accessing IE information: {0}", ex.Message);
-			}
-
 			// Multi-Screen captures
 			contextmenu_capturefullscreen.Click -= CaptureFullScreenToolStripMenuItemClick;
 			contextmenu_capturefullscreen.DropDownOpening -= MultiScreenDropDownOpening;
@@ -750,67 +726,15 @@ namespace Greenshot {
 			} else {
 				contextmenu_capturefullscreen.Click += CaptureFullScreenToolStripMenuItemClick;
 			}
-
-			var now = DateTime.Now;
-			if ((now.Month == 12 && now.Day > 19 && now.Day < 27) || // christmas
-				(now.Month ==  3 && now.Day > 13 && now.Day < 21)) { // birthday
-				var resources = new ComponentResourceManager(typeof(MainForm));
-					contextmenu_donate.Image = (Image)resources.GetObject("contextmenu_present.Image");
-			}
 		}
 
 		private void ContextMenuClosing(object sender, EventArgs e) {
-			contextmenu_captureiefromlist.DropDownItems.Clear();
 			contextmenu_capturewindowfromlist.DropDownItems.Clear();
 			CleanupThumbnail();
 		}
 		
 		/// <summary>
-		/// Build a selectable list of IE tabs when we enter the menu item
-		/// </summary>
-		private void CaptureIeMenuDropDownOpening(object sender, EventArgs e) {
-			if (!_conf.IECapture) {
-				return;
-			}
-			try {
-				List<KeyValuePair<WindowDetails, string>> tabs = IeCaptureHelper.GetBrowserTabs();
-				contextmenu_captureiefromlist.DropDownItems.Clear();
-				if (tabs.Count > 0) {
-					contextmenu_captureie.Enabled = true;
-					contextmenu_captureiefromlist.Enabled = true;
-					Dictionary<WindowDetails, int> counter = new Dictionary<WindowDetails, int>();
-					
-					foreach(KeyValuePair<WindowDetails, string> tabData in tabs) {
-						string title = tabData.Value;
-						if (title == null) {
-							continue;
-						}
-						if (title.Length > _conf.MaxMenuItemLength) {
-							title = title.Substring(0, Math.Min(title.Length, _conf.MaxMenuItemLength));
-						}
-						var captureIeTabItem = contextmenu_captureiefromlist.DropDownItems.Add(title);
-						int index = counter.ContainsKey(tabData.Key) ? counter[tabData.Key] : 0;
-						captureIeTabItem.Image = tabData.Key.DisplayIcon;
-						captureIeTabItem.Tag = new KeyValuePair<WindowDetails, int>(tabData.Key, index++);
-						captureIeTabItem.Click += Contextmenu_captureiefromlist_Click;
-						contextmenu_captureiefromlist.DropDownItems.Add(captureIeTabItem);
-						if (counter.ContainsKey(tabData.Key)) {
-							counter[tabData.Key] = index;
-						} else {
-							counter.Add(tabData.Key, index);
-						}
-					}
-				} else {
-					contextmenu_captureie.Enabled = false;
-					contextmenu_captureiefromlist.Enabled = false;
-				}
-			} catch (Exception ex) {
-				LOG.WarnFormat("Problem accessing IE information: {0}", ex.Message);
-			}
-		}
-
-		/// <summary>
-		/// MultiScreenDropDownOpening is called when mouse hovers over the Capture-Screen context menu 
+		/// MultiScreenDropDownOpening is called when mouse hovers over the Capture-Screen context menu
 		/// </summary>
 		/// <param name="sender"></param>
 		/// <param name="e"></param>
@@ -970,46 +894,6 @@ namespace Greenshot {
 			});
 		}
 
-		private void Contextmenu_captureie_Click(object sender, EventArgs e) {
-			CaptureIE();
-		}
-
-		private void Contextmenu_captureiefromlist_Click(object sender, EventArgs e) {
-			if (!_conf.IECapture) {
-				LOG.InfoFormat("IE Capture is disabled.");
-				return;
-			}
-			ToolStripMenuItem clickedItem = (ToolStripMenuItem)sender;
-			KeyValuePair<WindowDetails, int> tabData = (KeyValuePair<WindowDetails, int>)clickedItem.Tag;
-			BeginInvoke((MethodInvoker)delegate {
-				WindowDetails ieWindowToCapture = tabData.Key;
-				if (ieWindowToCapture != null && (!ieWindowToCapture.Visible || ieWindowToCapture.Iconic)) {
-					ieWindowToCapture.Restore();
-				}
-				try {
-					IeCaptureHelper.ActivateIeTab(ieWindowToCapture, tabData.Value);
-				} catch (Exception exception) {
-					LOG.Error(exception);
-				}
-				try {
-					CaptureHelper.CaptureIe(false, ieWindowToCapture);
-				} catch (Exception exception) {
-					LOG.Error(exception);
-				}
-			});
-		}
-
-		/// <summary>
-		/// Context menu entry "Support Greenshot"
-		/// </summary>
-		/// <param name="sender"></param>
-		/// <param name="e"></param>
-		private void Contextmenu_donateClick(object sender, EventArgs e) {
-			BeginInvoke((MethodInvoker)delegate {
-				Process.Start("http://getgreenshot.org/support/?version=" + Assembly.GetEntryAssembly().GetName().Version);
-			});
-		}
-		
 		/// <summary>
 		/// Context menu entry "Preferences"
 		/// </summary>
@@ -1028,9 +912,7 @@ namespace Greenshot {
 			} else {
 				try {
 					using (_settingsForm = new SettingsForm()) {
-						if (_settingsForm.ShowDialog() == DialogResult.OK) {
-							InitializeQuickSettingsMenu();
-						}
+						_settingsForm.ShowDialog();
 					}
 				} finally {
 					_settingsForm = null;
@@ -1062,15 +944,6 @@ namespace Greenshot {
 		}
 		
 		/// <summary>
-		/// The "Help" entry is clicked
-		/// </summary>
-		/// <param name="sender"></param>
-		/// <param name="e"></param>
-		private void Contextmenu_helpClick(object sender, EventArgs e) {
-			HelpFileLoader.LoadHelp();
-		}
-		
-		/// <summary>
 		/// The "Exit" entry is clicked
 		/// </summary>
 		/// <param name="sender"></param>
@@ -1079,152 +952,6 @@ namespace Greenshot {
 			 Exit();
 		}
 
-		private void CheckStateChangedHandler(object sender, EventArgs e) {
-			ToolStripMenuSelectListItem captureMouseItem = sender as ToolStripMenuSelectListItem;
-			if (captureMouseItem != null) {
-				_conf.CaptureMousepointer = captureMouseItem.Checked;
-			}
-		}
-		
-		/// <summary>
-		/// This needs to be called to initialize the quick settings menu entries
-		/// </summary>
-		private void InitializeQuickSettingsMenu() {
-			contextmenu_quicksettings.DropDownItems.Clear();
-
-			if (_conf.DisableQuickSettings) {
-				return;
-			}
-
-			// Only add if the value is not fixed
-			if (!_conf.Values["CaptureMousepointer"].IsFixed) {
-				// For the capture mousecursor option
-				ToolStripMenuSelectListItem captureMouseItem = new ToolStripMenuSelectListItem
-				{
-					Text = Language.GetString("settings_capture_mousepointer"),
-					Checked = _conf.CaptureMousepointer,
-					CheckOnClick = true
-				};
-				captureMouseItem.CheckStateChanged += CheckStateChangedHandler;
-
-				contextmenu_quicksettings.DropDownItems.Add(captureMouseItem);
-			}
-			ToolStripMenuSelectList selectList;
-			if (!_conf.Values["Destinations"].IsFixed) {
-				// screenshot destination
-				selectList = new ToolStripMenuSelectList("destinations", true)
-				{
-					Text = Language.GetString(LangKey.settings_destination)
-				};
-				// Working with IDestination:
-				foreach (var destination in DestinationHelper.GetAllDestinations()) {
-					selectList.AddItem(destination.Description, destination, _conf.OutputDestinations.Contains(destination.Designation));
-				}
-				selectList.CheckedChanged += QuickSettingDestinationChanged;
-				contextmenu_quicksettings.DropDownItems.Add(selectList);
-			}
-
-			if (!_conf.Values["WindowCaptureMode"].IsFixed) {
-				// Capture Modes
-				selectList = new ToolStripMenuSelectList("capturemodes", false)
-				{
-					Text = Language.GetString(LangKey.settings_window_capture_mode)
-				};
-				string enumTypeName = typeof(WindowCaptureMode).Name;
-				foreach (WindowCaptureMode captureMode in Enum.GetValues(typeof(WindowCaptureMode))) {
-					selectList.AddItem(Language.GetString(enumTypeName + "." + captureMode), captureMode, _conf.WindowCaptureMode == captureMode);
-				}
-				selectList.CheckedChanged += QuickSettingCaptureModeChanged;
-				contextmenu_quicksettings.DropDownItems.Add(selectList);
-			}
-
-			// print options
-			selectList = new ToolStripMenuSelectList("printoptions", true)
-			{
-				Text = Language.GetString(LangKey.settings_printoptions)
-			};
-
-			IniValue iniValue;
-			foreach(string propertyName in _conf.Values.Keys) {
-				if (propertyName.StartsWith("OutputPrint")) {
-					iniValue = _conf.Values[propertyName];
-					if (iniValue.Attributes.LanguageKey != null && !iniValue.IsFixed) {
-						selectList.AddItem(Language.GetString(iniValue.Attributes.LanguageKey), iniValue, (bool)iniValue.Value);
-					}
-				}
-			}
-			if (selectList.DropDownItems.Count > 0) {
-				selectList.CheckedChanged += QuickSettingBoolItemChanged;
-				contextmenu_quicksettings.DropDownItems.Add(selectList);
-			}
-
-			// effects
-			selectList = new ToolStripMenuSelectList("effects", true)
-			{
-				Text = Language.GetString(LangKey.settings_visualization)
-			};
-
-			iniValue = _conf.Values["PlayCameraSound"];
-			if (!iniValue.IsFixed) {
-				selectList.AddItem(Language.GetString(iniValue.Attributes.LanguageKey), iniValue, (bool)iniValue.Value);
-			}
-			iniValue = _conf.Values["ShowTrayNotification"];
-			if (!iniValue.IsFixed) {
-				selectList.AddItem(Language.GetString(iniValue.Attributes.LanguageKey), iniValue, (bool)iniValue.Value);
-			}
-			if (selectList.DropDownItems.Count > 0) {
-				selectList.CheckedChanged += QuickSettingBoolItemChanged;
-				contextmenu_quicksettings.DropDownItems.Add(selectList);
-			}
-		}
-
-		private void QuickSettingCaptureModeChanged(object sender, EventArgs e) {
-			ToolStripMenuSelectListItem item = ((ItemCheckedChangedEventArgs)e).Item;
-			WindowCaptureMode windowsCaptureMode = (WindowCaptureMode)item.Data;
-			if (item.Checked) {
-				_conf.WindowCaptureMode = windowsCaptureMode;
-			}
-		}
-
-		private void QuickSettingBoolItemChanged(object sender, EventArgs e) {
-			ToolStripMenuSelectListItem item = ((ItemCheckedChangedEventArgs)e).Item;
-			IniValue iniValue = item.Data as IniValue;
-			if (iniValue != null) {
-				iniValue.Value = item.Checked;
-				IniConfig.Save();
-			}
-		}
-
-		private void QuickSettingDestinationChanged(object sender, EventArgs e) {
-			ToolStripMenuSelectListItem item = ((ItemCheckedChangedEventArgs)e).Item;
-			IDestination selectedDestination = (IDestination)item.Data;
-			if (item.Checked) {
-				if (selectedDestination.Designation.Equals(PickerDestination.DESIGNATION)) {
-					// If the item is the destination picker, remove all others
-					_conf.OutputDestinations.Clear();
-				} else {
-					// If the item is not the destination picker, remove the picker
-					_conf.OutputDestinations.Remove(PickerDestination.DESIGNATION);
-				}
-				// Checked an item, add if the destination is not yet selected
-				if (!_conf.OutputDestinations.Contains(selectedDestination.Designation)) {
-					_conf.OutputDestinations.Add(selectedDestination.Designation);
-				}
-			} else {
-				// deselected a destination, only remove if it was selected
-				if (_conf.OutputDestinations.Contains(selectedDestination.Designation)) {
-					_conf.OutputDestinations.Remove(selectedDestination.Designation);
-				}
-			}
-			// Check if something was selected, if not make the picker the default
-			if (_conf.OutputDestinations == null || _conf.OutputDestinations.Count == 0) {
-				_conf.OutputDestinations.Add(PickerDestination.DESIGNATION);
-			}
-			IniConfig.Save();
-
-			// Rebuild the quick settings menu with the new settings.
-			InitializeQuickSettingsMenu();
-		}
 		#endregion
 		
 		private static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e) {
