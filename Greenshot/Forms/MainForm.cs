@@ -920,15 +920,6 @@ namespace Greenshot {
 			}
 		}
 		
-		/// <summary>
-		/// The "About Greenshot" entry is clicked
-		/// </summary>
-		/// <param name="sender"></param>
-		/// <param name="e"></param>
-		private void Contextmenu_aboutClick(object sender, EventArgs e) {
-			ShowAbout();
-		}
-
 		public void ShowAbout() {
 			if (_aboutForm != null) {
 				WindowDetails.ToForeground(_aboutForm.Handle);
