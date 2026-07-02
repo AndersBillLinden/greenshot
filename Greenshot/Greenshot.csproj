@@ -267,7 +267,6 @@
     <Compile Include="Memento\TextChangeMemento.cs" />
     <Compile Include="Memento\DrawableContainerBoundsChangeMemento.cs" />
     <Compile Include="Memento\SurfaceBackgroundChangeMemento.cs" />
-    <Compile Include="Helpers\UpdateHelper.cs" />
     <Compile Include="Helpers\EnvironmentInfo.cs" />
     <Compile Include="Helpers\GuiRectangle.cs" />
     <Compile Include="Helpers\MailHelper.cs" />

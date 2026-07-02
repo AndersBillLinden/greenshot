@@ -32,7 +32,6 @@ using System.Threading;
 using System.Windows.Forms;
 
 using Greenshot.Configuration;
-using Greenshot.Experimental;
 using Greenshot.Forms;
 using Greenshot.Help;
 using Greenshot.Helpers;
@@ -1452,16 +1451,6 @@ namespace Greenshot {
 		private void BackgroundWorkerTimerTick(object sender, EventArgs e) {
 			if (_conf.MinimizeWorkingSetSize) {
 				PsAPI.EmptyWorkingSet();
-			}
-			if (UpdateHelper.IsUpdateCheckNeeded()) {
-				LOG.Debug("BackgroundWorkerTimerTick checking for update");
-				// Start update check in the background
-				var backgroundTask = new Thread(UpdateHelper.CheckAndAskForUpdate)
-				{
-					Name = "Update check",
-					IsBackground = true
-				};
-				backgroundTask.Start();
 			}
 		}
 	}
