@@ -53,6 +53,35 @@ namespace Greenshot.Drawing
         [NonSerialized]
         private TextBox _textBox;
 
+        // Zoom-scaled copy of _font used only for the in-place editing textbox (null at 100%)
+        [NonSerialized]
+        private Font _textBoxFont;
+
+        /// <summary>
+        /// Set the in-place editing textbox font, scaled to the surface zoom factor. The drawn text
+        /// keeps using the unscaled _font because the paint graphics is already scaled.
+        /// </summary>
+        private void SetTextBoxFont()
+        {
+            if (_textBox == null || _font == null)
+            {
+                return;
+            }
+            float zoom = _parent?.ZoomFactor ?? 1f;
+            Font previousScaled = _textBoxFont;
+            if (Math.Abs(zoom - 1f) < 0.001f)
+            {
+                _textBox.Font = _font;
+                _textBoxFont = null;
+            }
+            else
+            {
+                _textBoxFont = new Font(_font.FontFamily, _font.Size * zoom, _font.Style, GraphicsUnit.Pixel);
+                _textBox.Font = _textBoxFont;
+            }
+            previousScaled?.Dispose();
+        }
+
         /// <summary>
         /// The StringFormat object is not serializable!!
         /// </summary>
@@ -135,6 +164,11 @@ namespace Greenshot.Drawing
                 {
                     _textBox.Dispose();
                     _textBox = null;
+                }
+                if (_textBoxFont != null)
+                {
+                    _textBoxFont.Dispose();
+                    _textBoxFont = null;
                 }
             }
             base.Dispose(disposing);
@@ -391,7 +425,7 @@ namespace Greenshot.Drawing
                 var newFont = CreateFont(fontFamily, fontBold, fontItalic, fontSize);
                 _font?.Dispose();
                 _font = newFont;
-                _textBox.Font = _font;
+                SetTextBoxFont();
             }
             catch (Exception ex)
             {
@@ -403,7 +437,7 @@ namespace Greenshot.Drawing
                     var newFont = CreateFont(fontFamily, fontBold, fontItalic, fontSize);
                     _font?.Dispose();
                     _font = newFont;
-                    _textBox.Font = _font;
+                    SetTextBoxFont();
                 }
                 catch (Exception)
                 {
@@ -445,14 +479,17 @@ namespace Greenshot.Drawing
                 correction = -1;
             }
             Rectangle absRectangle = GuiRectangle.GetGuiRectangle(Left, Top, Width, Height);
-            _textBox.Left = absRectangle.Left + lineWidth;
-            _textBox.Top = absRectangle.Top + lineWidth;
+            // The textbox is a child control of the surface and therefore lives in device
+            // coordinates, so scale the (image-coordinate) bounds by the current zoom factor.
+            float zoom = _parent?.ZoomFactor ?? 1f;
+            _textBox.Left = (int)Math.Round((absRectangle.Left + lineWidth) * zoom);
+            _textBox.Top = (int)Math.Round((absRectangle.Top + lineWidth) * zoom);
             if (lineThickness <= 1)
             {
                 lineWidth = 0;
             }
-            _textBox.Width = absRectangle.Width - 2 * lineWidth + correction;
-            _textBox.Height = absRectangle.Height - 2 * lineWidth + correction;
+            _textBox.Width = (int)Math.Round((absRectangle.Width - 2 * lineWidth + correction) * zoom);
+            _textBox.Height = (int)Math.Round((absRectangle.Height - 2 * lineWidth + correction) * zoom);
         }
 
         public override void ApplyBounds(RectangleF newBounds)

@@ -338,8 +338,91 @@ namespace Greenshot.Drawing
 			set
 			{
 				_image = value;
-				Size = _image.Size;
+				Size = ScaleWithZoom(_image.Size);
 			}
+		}
+
+		private float _zoomFactor = 1f;
+
+		/// <summary>
+		/// The zoom factor used to display the surface (1 = 100%). All surface logic (mouse,
+		/// elements, adorners) works in image coordinates; the zoom only affects how the surface
+		/// is rendered and the size of the (scrollable) control.
+		/// </summary>
+		public float ZoomFactor
+		{
+			get { return _zoomFactor; }
+			set
+			{
+				float newZoom = Math.Max(0.1f, Math.Min(value, 12f));
+				if (Math.Abs(newZoom - _zoomFactor) < 0.001f)
+				{
+					return;
+				}
+				_zoomFactor = newZoom;
+				if (_image != null)
+				{
+					Size = ScaleWithZoom(_image.Size);
+				}
+				Invalidate();
+				ZoomChanged?.Invoke(this, EventArgs.Empty);
+			}
+		}
+
+		/// <summary>
+		/// Raised whenever the ZoomFactor changes.
+		/// </summary>
+		public event EventHandler ZoomChanged;
+
+		private Size ScaleWithZoom(Size size)
+		{
+			if (_zoomFactor == 1f)
+			{
+				return size;
+			}
+			return new Size((int)Math.Round(size.Width * _zoomFactor), (int)Math.Round(size.Height * _zoomFactor));
+		}
+
+		/// <summary>
+		/// Convert a point in control (device) coordinates to image coordinates.
+		/// </summary>
+		private Point ToImageCoordinates(Point devicePoint)
+		{
+			if (_zoomFactor == 1f)
+			{
+				return devicePoint;
+			}
+			return new Point((int)(devicePoint.X / _zoomFactor), (int)(devicePoint.Y / _zoomFactor));
+		}
+
+		/// <summary>
+		/// Return a copy of the given MouseEventArgs with its coordinates converted to image space.
+		/// </summary>
+		private MouseEventArgs ToImageCoordinates(MouseEventArgs e)
+		{
+			if (_zoomFactor == 1f)
+			{
+				return e;
+			}
+			return new MouseEventArgs(e.Button, e.Clicks, (int)(e.X / _zoomFactor), (int)(e.Y / _zoomFactor), e.Delta);
+		}
+
+		/// <summary>
+		/// The surface control lives in a scrollable panel and is sized to image * zoom. Elements
+		/// invalidate themselves using image coordinates, so scale those to device coordinates here.
+		/// </summary>
+		public new void Invalidate(Rectangle rc)
+		{
+			if (_zoomFactor != 1f)
+			{
+				int x = (int)Math.Floor(rc.X * _zoomFactor);
+				int y = (int)Math.Floor(rc.Y * _zoomFactor);
+				int right = (int)Math.Ceiling(rc.Right * _zoomFactor);
+				int bottom = (int)Math.Ceiling(rc.Bottom * _zoomFactor);
+				rc = Rectangle.FromLTRB(x, y, right, bottom);
+				rc.Inflate(1, 1);
+			}
+			base.Invalidate(rc);
 		}
 
 		/// <summary>
@@ -517,7 +600,7 @@ namespace Greenshot.Drawing
 
 			// Set new values
 			Image = newImage;
-			Size = newImage.Size;
+			Size = ScaleWithZoom(newImage.Size);
 
 			_modified = true;
 		}
@@ -907,7 +990,7 @@ namespace Greenshot.Drawing
 		/// <param name="e"></param>
 		private void OnDragDrop(object sender, DragEventArgs e)
 		{
-			Point mouse = PointToClient(new Point(e.X, e.Y));
+			Point mouse = ToImageCoordinates(PointToClient(new Point(e.X, e.Y)));
 			if (e.Data.GetDataPresent("Text"))
 			{
 				string possibleUrl = ClipboardHelper.GetText(e.Data);
@@ -1165,6 +1248,8 @@ namespace Greenshot.Drawing
 		/// <param name="e"></param>
 		private void SurfaceMouseDown(object sender, MouseEventArgs e)
 		{
+			// Work in image coordinates regardless of the current zoom factor
+			e = ToImageCoordinates(e);
 
 			// Handle Adorners
 			var adorner = FindActiveAdorner(e);
@@ -1259,6 +1344,8 @@ namespace Greenshot.Drawing
 		/// <param name="e"></param>
 		private void SurfaceMouseUp(object sender, MouseEventArgs e)
 		{
+			// Work in image coordinates regardless of the current zoom factor
+			e = ToImageCoordinates(e);
 
 			// Handle Adorners
 			var adorner = FindActiveAdorner(e);
@@ -1348,6 +1435,9 @@ namespace Greenshot.Drawing
 		/// <param name="e"></param>
 		private void SurfaceMouseMove(object sender, MouseEventArgs e)
 		{
+			// Work in image coordinates regardless of the current zoom factor
+			e = ToImageCoordinates(e);
+
 			// Handle Adorners
 			var adorner = FindActiveAdorner(e);
 			if (adorner != null)
@@ -1456,6 +1546,27 @@ namespace Greenshot.Drawing
 			{
 				LOG.Debug("Empty cliprectangle??");
 				return;
+			}
+
+			if (_zoomFactor != 1f)
+			{
+				// Render everything in image coordinates, scaled up/down to the zoom factor.
+				targetGraphics.InterpolationMode = _zoomFactor > 1f ? InterpolationMode.NearestNeighbor : InterpolationMode.HighQualityBicubic;
+				targetGraphics.PixelOffsetMode = PixelOffsetMode.Half;
+				targetGraphics.ScaleTransform(_zoomFactor, _zoomFactor);
+				// Translate the (device) clip rectangle to image coordinates, rounding outwards, and
+				// clamp it to the image bounds so the filter buffer paths stay within the image.
+				int x = (int)Math.Floor(clipRectangle.X / _zoomFactor);
+				int y = (int)Math.Floor(clipRectangle.Y / _zoomFactor);
+				int right = (int)Math.Ceiling(clipRectangle.Right / _zoomFactor);
+				int bottom = (int)Math.Ceiling(clipRectangle.Bottom / _zoomFactor);
+				clipRectangle = Rectangle.FromLTRB(x, y, right, bottom);
+				clipRectangle.Inflate(1, 1);
+				clipRectangle.Intersect(new Rectangle(Point.Empty, Image.Size));
+				if (clipRectangle.Width <= 0 || clipRectangle.Height <= 0)
+				{
+					return;
+				}
 			}
 
 			if (_elements.HasIntersectingFilters(clipRectangle))
@@ -1823,8 +1934,9 @@ namespace Greenshot.Drawing
 				var mousePositionOnControl = PointToClient(MousePosition);
 				if (ClientRectangle.Contains(mousePositionOnControl))
 				{
-					x = mousePositionOnControl.X;
-					y = mousePositionOnControl.Y;
+					var mouseInImage = ToImageCoordinates(mousePositionOnControl);
+					x = mouseInImage.X;
+					y = mouseInImage.Y;
 				}
 
 				foreach (Image clipboardImage in ClipboardHelper.GetImages(clipboard))

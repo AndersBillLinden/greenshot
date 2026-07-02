@@ -413,7 +413,7 @@ namespace Greenshot {
 				int newHeight = Math.Max(minimumFormHeight, currentFormSize.Height - currentImageClientSize.Height + imageSize.Height);
 				Size = new Size(newWidth, newHeight);
 			}
-			dimensionsLabel.Text = Surface.Image.Width + "x" + Surface.Image.Height;
+			UpdateZoomStatus();
 			ImageEditorFormResize(sender, new EventArgs());
 		}
 
@@ -880,7 +880,76 @@ namespace Greenshot {
 		/// <param name="sender"></param>
 		/// <param name="e"></param>
 		private void PanelMouseWheel(object sender, MouseEventArgs e) {
+			if ((ModifierKeys & Keys.Control) == Keys.Control) {
+				// Ctrl + mouse wheel zooms in/out, keeping the point under the cursor stationary
+				ZoomBy(Math.Sign(e.Delta), panel1.PointToClient(MousePosition));
+				return;
+			}
 			panel1.Focus();
+		}
+		#endregion
+
+		#region zoom
+		// Discrete zoom levels stepped through with Ctrl + wheel / Ctrl +-
+		private static readonly float[] ZoomLevels = { 0.25f, 0.33f, 0.5f, 0.66f, 1f, 1.5f, 2f, 3f, 4f, 6f, 8f };
+
+		/// <summary>
+		/// Step the zoom one level in or out (direction &gt; 0 zooms in).
+		/// </summary>
+		/// <param name="direction">positive to zoom in, negative to zoom out</param>
+		/// <param name="devicePoint">point (in panel client coordinates) to keep stationary while zooming</param>
+		private void ZoomBy(int direction, Point devicePoint) {
+			float current = _surface.ZoomFactor;
+			float target = current;
+			if (direction > 0) {
+				foreach (float level in ZoomLevels) {
+					if (level > current + 0.001f) { target = level; break; }
+				}
+			} else if (direction < 0) {
+				for (int i = ZoomLevels.Length - 1; i >= 0; i--) {
+					if (ZoomLevels[i] < current - 0.001f) { target = ZoomLevels[i]; break; }
+				}
+			}
+			SetZoom(target, devicePoint);
+		}
+
+		/// <summary>
+		/// Apply a zoom factor, keeping the given point (in panel client coordinates) at the same
+		/// place on screen by adjusting the scroll position.
+		/// </summary>
+		private void SetZoom(float factor, Point devicePoint) {
+			if (_surface == null) {
+				return;
+			}
+			// Which image pixel is currently under devicePoint?
+			Point surfaceLocation = _surface.Location; // negative offset when scrolled
+			float oldZoom = _surface.ZoomFactor;
+			float imageX = (devicePoint.X - surfaceLocation.X) / oldZoom;
+			float imageY = (devicePoint.Y - surfaceLocation.Y) / oldZoom;
+
+			_surface.ZoomFactor = factor;
+			float appliedZoom = _surface.ZoomFactor; // may have been clamped
+
+			// Scroll so that the same image pixel stays under devicePoint
+			int newScrollX = (int)Math.Round(imageX * appliedZoom) - devicePoint.X;
+			int newScrollY = (int)Math.Round(imageY * appliedZoom) - devicePoint.Y;
+			panel1.AutoScrollPosition = new Point(newScrollX, newScrollY);
+
+			UpdateZoomStatus();
+		}
+
+		/// <summary>
+		/// Reset the zoom to 100%, keeping the centre of the viewport stable.
+		/// </summary>
+		private void ResetZoom() {
+			SetZoom(1f, new Point(panel1.ClientSize.Width / 2, panel1.ClientSize.Height / 2));
+		}
+
+		private void UpdateZoomStatus() {
+			if (_surface?.Image != null) {
+				dimensionsLabel.Text = _surface.Image.Width + "x" + _surface.Image.Height
+					+ " (" + Math.Round(_surface.ZoomFactor * 100) + "%)";
+			}
 		}
 		#endregion
 		
@@ -896,6 +965,22 @@ namespace Greenshot {
 		protected override bool ProcessCmdKey(ref Message msg, Keys keys) {
 			// disable default key handling if surface has requested a lock
 			if (!_surface.KeysLocked) {
+
+				// Zoom shortcuts: Ctrl + '+' / '-' to zoom, Ctrl + '0' to reset to 100%
+				switch (keys) {
+					case Keys.Control | Keys.Oemplus:
+					case Keys.Control | Keys.Add:
+						ZoomBy(1, new Point(panel1.ClientSize.Width / 2, panel1.ClientSize.Height / 2));
+						return true;
+					case Keys.Control | Keys.OemMinus:
+					case Keys.Control | Keys.Subtract:
+						ZoomBy(-1, new Point(panel1.ClientSize.Width / 2, panel1.ClientSize.Height / 2));
+						return true;
+					case Keys.Control | Keys.D0:
+					case Keys.Control | Keys.NumPad0:
+						ResetZoom();
+						return true;
+				}
 
 				// Go through the destinations to check the EditorShortcut Keys
 				// this way the menu entries don't need to be enabled.
