@@ -204,8 +204,11 @@ namespace Greenshot {
 
 			pluginToolStripMenuItem.Visible = pluginToolStripMenuItem.DropDownItems.Count > 0;
 			
-			// Workaround: for the MouseWheel event which doesn't get to the panel
-			MouseWheel += PanelMouseWheel;
+			// Mouse wheel zooms the surface; handle it both on the form (needed because the wheel
+			// event doesn't always reach the panel) and on the panel itself.
+			MouseWheel += WheelZoom;
+			panel1.MouseWheel += WheelZoom;
+			panel1.Resize += (s, e) => CenterSurface();
 
 			// Make sure the value is set correctly when starting
 			counterUpDown.Value = Surface.CounterStart;
@@ -414,6 +417,7 @@ namespace Greenshot {
 				Size = new Size(newWidth, newHeight);
 			}
 			UpdateZoomStatus();
+			CenterSurface();
 			ImageEditorFormResize(sender, new EventArgs());
 		}
 
@@ -879,13 +883,23 @@ namespace Greenshot {
 		/// </summary>
 		/// <param name="sender"></param>
 		/// <param name="e"></param>
-		private void PanelMouseWheel(object sender, MouseEventArgs e) {
-			if ((ModifierKeys & Keys.Control) == Keys.Control) {
-				// Ctrl + mouse wheel zooms in/out around the centre of the viewport
-				ZoomBy(Math.Sign(e.Delta), ViewportCenter);
+		/// <summary>
+		/// Mouse wheel zooms in/out around the centre of the viewport. Shift + wheel is left to the
+		/// panel for horizontal scrolling.
+		/// </summary>
+		private void WheelZoom(object sender, MouseEventArgs e) {
+			// The event bubbles from the surface up to the form; only act on it once.
+			if (e is HandledMouseEventArgs alreadyHandled && alreadyHandled.Handled) {
 				return;
 			}
-			panel1.Focus();
+			if ((ModifierKeys & Keys.Shift) == Keys.Shift) {
+				return;
+			}
+			ZoomBy(Math.Sign(e.Delta), ViewportCenter);
+			// Stop the panel from also scrolling in response to this wheel notch.
+			if (e is HandledMouseEventArgs handled) {
+				handled.Handled = true;
+			}
 		}
 		#endregion
 
@@ -926,8 +940,9 @@ namespace Greenshot {
 			if (_surface == null) {
 				return;
 			}
-			// Which image pixel is currently under devicePoint?
-			Point surfaceLocation = _surface.Location; // negative offset when scrolled
+			// Which image pixel is currently under devicePoint (the surface is positioned within the
+			// panel, so account for its current location)?
+			Point surfaceLocation = _surface.Location;
 			float oldZoom = _surface.ZoomFactor;
 			float imageX = (devicePoint.X - surfaceLocation.X) / oldZoom;
 			float imageY = (devicePoint.Y - surfaceLocation.Y) / oldZoom;
@@ -935,12 +950,32 @@ namespace Greenshot {
 			_surface.ZoomFactor = factor;
 			float appliedZoom = _surface.ZoomFactor; // may have been clamped
 
-			// Scroll so that the same image pixel stays under devicePoint
-			int newScrollX = (int)Math.Round(imageX * appliedZoom) - devicePoint.X;
-			int newScrollY = (int)Math.Round(imageY * appliedZoom) - devicePoint.Y;
-			panel1.AutoScrollPosition = new Point(newScrollX, newScrollY);
+			// Scroll so the same image pixel stays under devicePoint (only matters when the surface
+			// is larger than the viewport; CenterSurface handles the smaller case).
+			int scrollX = (int)Math.Round(imageX * appliedZoom) - devicePoint.X;
+			int scrollY = (int)Math.Round(imageY * appliedZoom) - devicePoint.Y;
+			panel1.AutoScrollPosition = new Point(scrollX, scrollY);
 
+			CenterSurface();
 			UpdateZoomStatus();
+		}
+
+		/// <summary>
+		/// Centre the surface within the panel along any axis where it is smaller than the viewport,
+		/// so zooming grows/shrinks the image around its centre instead of the top-left corner. When
+		/// the surface is larger than the viewport, AutoScroll handles positioning for that axis.
+		/// </summary>
+		private void CenterSurface() {
+			if (_surface == null) {
+				return;
+			}
+			Size client = panel1.ClientSize;
+			if (_surface.Width < client.Width) {
+				_surface.Left = (client.Width - _surface.Width) / 2;
+			}
+			if (_surface.Height < client.Height) {
+				_surface.Top = (client.Height - _surface.Height) / 2;
+			}
 		}
 
 		/// <summary>
