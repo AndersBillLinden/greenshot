@@ -21,11 +21,12 @@
     <OldToolsVersion>3.5</OldToolsVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
-    <OutputPath>..\..\..\Program Files\Greenshot\</OutputPath>
+    <OutputPath>..\..\..\Users\anders\AppData\Local\Programs\Greenshot\</OutputPath>
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
     <Prefer32Bit>false</Prefer32Bit>
+    <OutputPath>..\..\..\Users\anders\AppData\Local\Programs\Greenshot\</OutputPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x86'">
     <Prefer32Bit>false</Prefer32Bit>
@@ -37,10 +38,6 @@
   <ItemGroup>
     <Reference Include="Accessibility" />
     <Reference Include="CustomMarshalers" />
-    <Reference Include="LinqBridge, Version=1.3.0.0, Culture=neutral, PublicKeyToken=c2b14eb747628076, processorArchitecture=MSIL">
-      <HintPath>..\packages\LinqBridge.1.3.0\lib\net20\LinqBridge.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
     <Reference Include="log4net">
       <HintPath>..\Greenshot\Lib\log4net.dll</HintPath>
     </Reference>
