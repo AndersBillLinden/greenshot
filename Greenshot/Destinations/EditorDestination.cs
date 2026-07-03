@@ -128,7 +128,11 @@ namespace Greenshot.Destinations {
 					exportInformation.ErrorMessage = e.Message;
 				}
 			}
-			ProcessExport(exportInformation, surface);
+			// Don't show the "Exported to: Open in image editor" status message when opening the
+			// editor (it is redundant); only surface an actual export error.
+			if (!string.IsNullOrEmpty(exportInformation.ErrorMessage)) {
+				ProcessExport(exportInformation, surface);
+			}
 			// Workaround for the modified flag when using the editor.
 			surface.Modified = modified;
 			return exportInformation;
