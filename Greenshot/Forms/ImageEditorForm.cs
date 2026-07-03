@@ -207,7 +207,6 @@ namespace Greenshot {
 			// Mouse wheel zooms the surface, pivoting on the pixel under the cursor. The panel raises
 			// PlainMouseWheel (and suppresses its own scrolling) so a plain wheel zooms instead of panning.
 			panel1.PlainMouseWheel += (s, e) => ZoomBy(Math.Sign(e.Delta), panel1.PointToClient(Cursor.Position));
-			panel1.Resize += (s, e) => CenterSurface();
 
 			// Make sure the value is set correctly when starting
 			counterUpDown.Value = Surface.CounterStart;
@@ -416,7 +415,6 @@ namespace Greenshot {
 				Size = new Size(newWidth, newHeight);
 			}
 			UpdateZoomStatus();
-			CenterSurface();
 			ImageEditorFormResize(sender, new EventArgs());
 		}
 
@@ -930,34 +928,17 @@ namespace Greenshot {
 			float appliedZoom = _surface.ZoomFactor; // may have been clamped
 
 			// Make the scrollable area match the zoomed surface so scrollbars appear when zoomed in.
+			// The surface is positioned solely by AutoScroll (its Location tracks AutoScrollPosition),
+			// which keeps the pivot maths below exact.
 			panel1.AutoScrollMinSize = _surface.Size;
 
-			// Scroll so the same image pixel stays under devicePoint (only matters when the surface
-			// is larger than the viewport; CenterSurface handles the smaller case).
+			// Scroll so the same image pixel stays under devicePoint. AutoScrollPosition clamps to the
+			// valid range, so this only shifts once the surface is larger than the viewport.
 			int scrollX = (int)Math.Round(imageX * appliedZoom) - devicePoint.X;
 			int scrollY = (int)Math.Round(imageY * appliedZoom) - devicePoint.Y;
 			panel1.AutoScrollPosition = new Point(scrollX, scrollY);
 
-			CenterSurface();
 			UpdateZoomStatus();
-		}
-
-		/// <summary>
-		/// Centre the surface within the panel along any axis where it is smaller than the viewport,
-		/// so zooming grows/shrinks the image around its centre instead of the top-left corner. When
-		/// the surface is larger than the viewport, AutoScroll handles positioning for that axis.
-		/// </summary>
-		private void CenterSurface() {
-			if (_surface == null) {
-				return;
-			}
-			Size client = panel1.ClientSize;
-			if (_surface.Width < client.Width) {
-				_surface.Left = (client.Width - _surface.Width) / 2;
-			}
-			if (_surface.Height < client.Height) {
-				_surface.Top = (client.Height - _surface.Height) / 2;
-			}
 		}
 
 		/// <summary>
