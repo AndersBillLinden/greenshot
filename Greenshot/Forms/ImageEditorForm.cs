@@ -55,6 +55,11 @@ namespace Greenshot {
 		private static readonly List<IImageEditor> EditorList = new List<IImageEditor>();
 
 		private Surface _surface;
+		// Manual scroll bars for panning the (zoomed) surface. AutoScroll cannot position the surface
+		// with a margin, which is needed for zoom-to-cursor, so the panning is managed by hand.
+		private readonly HScrollBar _hScrollBar = new HScrollBar { Visible = false };
+		private readonly VScrollBar _vScrollBar = new VScrollBar { Visible = false };
+		private bool _suppressScrollEvent;
 		private GreenshotToolStripButton[] _toolbarButtons;
 		
 		private static readonly string[] SupportedClipboardFormats = {typeof(string).FullName, "Text", typeof(IDrawableContainerList).FullName};
@@ -89,6 +94,16 @@ namespace Greenshot {
 			//
 			ManualLanguageApply = true;
 			InitializeComponent();
+
+			// Manual panning: AutoScroll can't offset the surface with a margin (needed for
+			// zoom-to-cursor), so drive our own scroll bars instead. Set this up before the surface is
+			// assigned, since assigning it triggers the first layout.
+			panel1.AutoScroll = false;
+			_hScrollBar.Scroll += ScrollbarScrolled;
+			_vScrollBar.Scroll += ScrollbarScrolled;
+			panel1.Controls.Add(_hScrollBar);
+			panel1.Controls.Add(_vScrollBar);
+			panel1.Resize += (s, e) => ApplyScrollLayout(_surface?.Left ?? 0, _surface?.Top ?? 0, true);
 
 			Load += delegate {
 				var thread = new Thread(AddDestinations)
@@ -415,6 +430,7 @@ namespace Greenshot {
 				Size = new Size(newWidth, newHeight);
 			}
 			UpdateZoomStatus();
+			ApplyScrollLayout(_surface?.Left ?? 0, _surface?.Top ?? 0, true);
 			ImageEditorFormResize(sender, new EventArgs());
 		}
 
@@ -911,14 +927,13 @@ namespace Greenshot {
 
 		/// <summary>
 		/// Apply a zoom factor, keeping the given origin point (in panel client coordinates) at the
-		/// same place on screen by adjusting the scroll position.
+		/// same place on screen.
 		/// </summary>
 		private void SetZoom(float factor, Point devicePoint) {
 			if (_surface == null) {
 				return;
 			}
-			// Which image pixel is currently under devicePoint (the surface is positioned within the
-			// panel, so account for its current location)?
+			// Which image pixel is currently under devicePoint (the surface top-left is _surface.Location)?
 			Point surfaceLocation = _surface.Location;
 			float oldZoom = _surface.ZoomFactor;
 			float imageX = (devicePoint.X - surfaceLocation.X) / oldZoom;
@@ -927,18 +942,85 @@ namespace Greenshot {
 			_surface.ZoomFactor = factor;
 			float appliedZoom = _surface.ZoomFactor; // may have been clamped
 
-			// Make the scrollable area match the zoomed surface so scrollbars appear when zoomed in.
-			// The surface is positioned solely by AutoScroll (its Location tracks AutoScrollPosition),
-			// which keeps the pivot maths below exact.
-			panel1.AutoScrollMinSize = _surface.Size;
-
-			// Scroll so the same image pixel stays under devicePoint. AutoScrollPosition clamps to the
-			// valid range, so this only shifts once the surface is larger than the viewport.
-			int scrollX = (int)Math.Round(imageX * appliedZoom) - devicePoint.X;
-			int scrollY = (int)Math.Round(imageY * appliedZoom) - devicePoint.Y;
-			panel1.AutoScrollPosition = new Point(scrollX, scrollY);
-
+			// New surface top-left so that same image pixel stays under devicePoint.
+			int desiredLeft = devicePoint.X - (int)Math.Round(imageX * appliedZoom);
+			int desiredTop = devicePoint.Y - (int)Math.Round(imageY * appliedZoom);
+			ApplyScrollLayout(desiredLeft, desiredTop, false);
 			UpdateZoomStatus();
+		}
+
+		private static int Clamp(int value, int min, int max) {
+			return value < min ? min : (value > max ? max : value);
+		}
+
+		/// <summary>
+		/// Position the surface at the requested top-left (clamped so it stays in view), and update the
+		/// scroll bars to match. When centreFittingAxes is set, an axis whose content fits the viewport
+		/// is centred instead of using the requested offset (used for the initial view and on resize).
+		/// </summary>
+		private void ApplyScrollLayout(int desiredLeft, int desiredTop, bool centreFittingAxes) {
+			if (_surface == null) {
+				return;
+			}
+			Size client = panel1.ClientSize;
+			Size content = _surface.Size;
+			int sbW = SystemInformation.VerticalScrollBarWidth;
+			int sbH = SystemInformation.HorizontalScrollBarHeight;
+
+			// Decide which scroll bars are needed (each one steals space from the other axis).
+			bool needH = content.Width > client.Width;
+			bool needV = content.Height > client.Height;
+			if (needV && content.Width > client.Width - sbW) needH = true;
+			if (needH && content.Height > client.Height - sbH) needV = true;
+			int vpW = client.Width - (needV ? sbW : 0);
+			int vpH = client.Height - (needH ? sbH : 0);
+
+			int left = centreFittingAxes && content.Width <= vpW
+				? (vpW - content.Width) / 2
+				: Clamp(desiredLeft, Math.Min(0, vpW - content.Width), Math.Max(0, vpW - content.Width));
+			int top = centreFittingAxes && content.Height <= vpH
+				? (vpH - content.Height) / 2
+				: Clamp(desiredTop, Math.Min(0, vpH - content.Height), Math.Max(0, vpH - content.Height));
+			_surface.Location = new Point(left, top);
+
+			_suppressScrollEvent = true;
+			_hScrollBar.Visible = needH;
+			_vScrollBar.Visible = needV;
+			if (needH) {
+				_hScrollBar.SetBounds(0, client.Height - sbH, vpW, sbH);
+				_hScrollBar.Minimum = 0;
+				_hScrollBar.Maximum = Math.Max(0, content.Width - 1);
+				_hScrollBar.LargeChange = Math.Max(1, vpW);
+				_hScrollBar.SmallChange = Math.Max(1, vpW / 10);
+				_hScrollBar.Value = Clamp(-left, 0, Math.Max(0, _hScrollBar.Maximum - _hScrollBar.LargeChange + 1));
+				_hScrollBar.BringToFront();
+			}
+			if (needV) {
+				_vScrollBar.SetBounds(client.Width - sbW, 0, sbW, vpH);
+				_vScrollBar.Minimum = 0;
+				_vScrollBar.Maximum = Math.Max(0, content.Height - 1);
+				_vScrollBar.LargeChange = Math.Max(1, vpH);
+				_vScrollBar.SmallChange = Math.Max(1, vpH / 10);
+				_vScrollBar.Value = Clamp(-top, 0, Math.Max(0, _vScrollBar.Maximum - _vScrollBar.LargeChange + 1));
+				_vScrollBar.BringToFront();
+			}
+			_suppressScrollEvent = false;
+		}
+
+		/// <summary>
+		/// A scroll bar was dragged: move the surface to match.
+		/// </summary>
+		private void ScrollbarScrolled(object sender, ScrollEventArgs e) {
+			if (_suppressScrollEvent || _surface == null) {
+				return;
+			}
+			int hv = _hScrollBar.Value;
+			int vv = _vScrollBar.Value;
+			if (sender == _hScrollBar) hv = e.NewValue;
+			else if (sender == _vScrollBar) vv = e.NewValue;
+			int left = _hScrollBar.Visible ? -hv : _surface.Left;
+			int top = _vScrollBar.Visible ? -vv : _surface.Top;
+			_surface.Location = new Point(left, top);
 		}
 
 		/// <summary>
