@@ -354,7 +354,8 @@ namespace Greenshot.Drawing
 			get { return _zoomFactor; }
 			set
 			{
-				float newZoom = Math.Max(0.1f, Math.Min(value, 12f));
+				// Do not allow zooming out below the original size (1.0); zooming out just restores it.
+				float newZoom = Math.Max(1f, Math.Min(value, 12f));
 				if (Math.Abs(newZoom - _zoomFactor) < 0.001f)
 				{
 					return;
