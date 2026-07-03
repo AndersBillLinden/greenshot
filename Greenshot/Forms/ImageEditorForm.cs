@@ -204,9 +204,9 @@ namespace Greenshot {
 
 			pluginToolStripMenuItem.Visible = pluginToolStripMenuItem.DropDownItems.Count > 0;
 			
-			// Mouse wheel zooms the surface. The panel raises PlainMouseWheel (and suppresses its own
-			// scrolling) so a plain wheel zooms instead of panning.
-			panel1.PlainMouseWheel += (s, e) => ZoomBy(Math.Sign(e.Delta), ViewportCenter);
+			// Mouse wheel zooms the surface, pivoting on the pixel under the cursor. The panel raises
+			// PlainMouseWheel (and suppresses its own scrolling) so a plain wheel zooms instead of panning.
+			panel1.PlainMouseWheel += (s, e) => ZoomBy(Math.Sign(e.Delta), panel1.PointToClient(Cursor.Position));
 			panel1.Resize += (s, e) => CenterSurface();
 
 			// Make sure the value is set correctly when starting
@@ -928,6 +928,9 @@ namespace Greenshot {
 
 			_surface.ZoomFactor = factor;
 			float appliedZoom = _surface.ZoomFactor; // may have been clamped
+
+			// Make the scrollable area match the zoomed surface so scrollbars appear when zoomed in.
+			panel1.AutoScrollMinSize = _surface.Size;
 
 			// Scroll so the same image pixel stays under devicePoint (only matters when the surface
 			// is larger than the viewport; CenterSurface handles the smaller case).
